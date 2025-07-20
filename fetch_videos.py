@@ -1,5 +1,3 @@
-
-
 import requests
 from bs4 import BeautifulSoup
 import time
@@ -120,7 +118,7 @@ def scrape_videos():
             print("Login failed. Exiting scraping thread.")
             return
 
-        current_video_id = 3913
+        current_video_id = 5282
         last_found_video_id = 0
         consecutive_not_found = 0
 
