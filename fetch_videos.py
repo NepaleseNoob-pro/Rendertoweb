@@ -4,6 +4,8 @@ import requests
 from bs4 import BeautifulSoup
 import time
 import os
+import threading
+from flask import Flask, send_from_directory
 
 # Configuration
 LOGIN_URL = 'https://gurumantrapsc.com/customer/login'
@@ -11,6 +13,13 @@ HOME_URL = 'https://gurumantrapsc.com/home'
 PHONE_NUMBER = '9809642422'
 PASSWORD = 'rupesh123'
 RESULTS_FILE = 'education_latest.txt'
+
+# Flask App setup
+app = Flask(__name__)
+
+@app.route('/education_latest.txt')
+def serve_education_file():
+    return send_from_directory(os.getcwd(), RESULTS_FILE, as_attachment=False)
 
 def get_csrf_token(session, url):
     """Fetches a page and extracts the CSRF token."""
@@ -80,11 +89,16 @@ def fetch_video_info(session, video_id):
         print(f"Error fetching video {video_id}: {e}")
         return None, None
 
-def main():
+def scrape_videos():
     """Main function to run the scraper."""
     # In the pull model, we start from 0 and let the remote sync handle duplicates
     # The existing_results set is now only for the current run to avoid immediate duplicates
     existing_results = set()
+
+    # Ensure the results file exists
+    if not os.path.exists(RESULTS_FILE):
+        with open(RESULTS_FILE, 'w') as f:
+            pass  # Create the file if it doesn't exist
 
     with requests.Session() as session:
 
@@ -99,10 +113,11 @@ def main():
 
         csrf_token = get_csrf_token(session, HOME_URL)
         if not csrf_token:
-            print("Could not get CSRF token. Exiting.")
+            print("Could not get CSRF token. Exiting scraping thread.")
             return
 
         if not login(session, csrf_token):
+            print("Login failed. Exiting scraping thread.")
             return
 
         current_video_id = 0
@@ -111,6 +126,16 @@ def main():
 
         while True:
             print(f"Fetching video ID: {current_video_id}...")
+
+            # Read existing results from the file to avoid re-adding in this run
+            # This is important if the script restarts or runs for a long time
+            try:
+                with open(RESULTS_FILE, 'r') as f:
+                    for line in f:
+                        if '=' in line:
+                            existing_results.add(line.split('=')[0])
+            except FileNotFoundError:
+                pass # File might not exist yet
 
             if str(current_video_id) in existing_results:
                 print(f"SKIPPED (already exists): Video ID: {current_video_id}")
@@ -131,7 +156,7 @@ def main():
             else:
                 consecutive_not_found += 1
                 if consecutive_not_found >= 100:
-                    print(f"INFO: 15 consecutive videos not found. Restarting from last found ID: {last_found_video_id}")
+                    print(f"INFO: 100 consecutive videos not found. Restarting from last found ID: {last_found_video_id}")
                     current_video_id = last_found_video_id
                     consecutive_not_found = 0
 
@@ -140,5 +165,13 @@ def main():
             current_video_id += 1
 
 if __name__ == "__main__":
-    main()
+    # Start the scraping in a separate thread
+    scraper_thread = threading.Thread(target=scrape_videos)
+    scraper_thread.daemon = True # Allow the main program to exit even if the thread is running
+    scraper_thread.start()
+
+    # Start the Flask web server
+    # Render automatically sets the PORT environment variable
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
 
