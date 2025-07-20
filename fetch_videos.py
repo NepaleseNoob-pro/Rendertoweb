@@ -10,8 +10,7 @@ LOGIN_URL = 'https://gurumantrapsc.com/customer/login'
 HOME_URL = 'https://gurumantrapsc.com/home'
 PHONE_NUMBER = '9809642422'
 PASSWORD = 'rupesh123'
-RESULTS_FILE = 'education.txt'
-REMOTE_UPLOAD_URL = 'http://rupeshkumarmahato.com.np/upload_education.php'
+RESULTS_FILE = 'education_latest.txt'
 
 def get_csrf_token(session, url):
     """Fetches a page and extracts the CSRF token."""
@@ -63,7 +62,8 @@ def fetch_video_info(session, video_id):
         youtube_url = None
         iframe = soup.find('iframe')
         if iframe and iframe.has_attr('src') and 'youtube.com/embed/' in iframe['src']:
-            video_id_youtube = iframe['src'].split('/')[-1].split('?')[0]
+            # Split the src URL by /embed/ and take the second part, then split by ? to remove params
+            video_id_youtube = iframe['src'].split('/embed/')[1].split('?')[0]
             youtube_url = f"https://www.youtube.com/watch?v={video_id_youtube}"
 
         # Extract Title
@@ -80,28 +80,10 @@ def fetch_video_info(session, video_id):
         print(f"Error fetching video {video_id}: {e}")
         return None, None
 
-def get_last_video_id_from_remote():
-    """Fetches the education.txt file from the remote server and gets the last video ID."""
-    try:
-        response = requests.get('http://rupeshkumarmahato.com.np/education.txt')
-        response.raise_for_status()
-        lines = response.text.strip().split('\n')
-        if lines:
-            last_line = lines[-1]
-            if '=' in last_line:
-                return int(last_line.split('=')[0])
-    except requests.exceptions.RequestException as e:
-        print(f"Could not fetch remote education.txt: {e}")
-    except (ValueError, IndexError) as e:
-        print(f"Could not parse remote education.txt: {e}")
-    return 0 # Return 0 if fetching or parsing fails
-
 def main():
     """Main function to run the scraper."""
-    last_remote_id = get_last_video_id_from_remote()
-    print(f"Last video ID found on remote server: {last_remote_id}")
-
-    # The set of existing results is now just for the current session, to avoid re-processing the same ID in a loop
+    # In the pull model, we start from 0 and let the remote sync handle duplicates
+    # The existing_results set is now only for the current run to avoid immediate duplicates
     existing_results = set()
 
     with requests.Session() as session:
@@ -123,8 +105,8 @@ def main():
         if not login(session, csrf_token):
             return
 
-        current_video_id = last_remote_id + 1
-        last_found_video_id = last_remote_id
+        current_video_id = 0
+        last_found_video_id = 0
         consecutive_not_found = 0
 
         while True:
@@ -143,13 +125,6 @@ def main():
 
                 with open(RESULTS_FILE, 'a') as f:
                     f.write(result_line)
-
-                # Upload to remote server
-                try:
-                    upload_response = requests.post(REMOTE_UPLOAD_URL, data={'data': result_line})
-                    print(f"INFO: Uploaded to remote server: {upload_response.text}")
-                except requests.exceptions.RequestException as e:
-                    print(f"ERROR: Failed to upload to remote server: {e}")
 
                 last_found_video_id = current_video_id
                 consecutive_not_found = 0
