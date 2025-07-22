@@ -118,7 +118,7 @@ def scrape_videos():
             print("Login failed. Exiting scraping thread.")
             return
 
-        current_video_id = 5282
+        current_video_id = 6344
         last_found_video_id = 0
         consecutive_not_found = 0
 
